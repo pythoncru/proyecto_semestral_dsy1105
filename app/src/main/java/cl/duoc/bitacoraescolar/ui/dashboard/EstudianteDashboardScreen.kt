@@ -58,6 +58,7 @@ import cl.duoc.bitacoraescolar.data.model.BitacoraEntity
 import cl.duoc.bitacoraescolar.data.model.EvidenciaEntity
 import cl.duoc.bitacoraescolar.data.model.RecordatorioEntity
 import cl.duoc.bitacoraescolar.data.model.RegistroEntity
+import androidx.activity.result.PickVisualMediaRequest
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -295,9 +296,7 @@ fun EstudianteResponderBitacoraView(
                     OutlinedButton(
                         onClick = {
                             photoPickerLauncher.launch(
-                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageOnly
-                                )
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
                         },
                         modifier = Modifier.fillMaxWidth()

@@ -17,17 +17,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,10 +54,8 @@ import cl.duoc.bitacoraescolar.data.model.AsignaturaEntity
 import cl.duoc.bitacoraescolar.data.model.BitacoraEntity
 import cl.duoc.bitacoraescolar.data.model.CursoEntity
 import cl.duoc.bitacoraescolar.data.model.EstadoBitacora
-import cl.duoc.bitacoraescolar.data.model.EstadoRegistro
 import cl.duoc.bitacoraescolar.data.model.RecordatorioEntity
 import cl.duoc.bitacoraescolar.data.model.RegistroEntity
-import cl.duoc.bitacoraescolar.data.model.UsuarioEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -169,51 +163,122 @@ fun DocenteDashboardScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DocenteBitacorasList(
     bitacoras: List<BitacoraEntity>,
     onBitacoraClick: (BitacoraEntity) -> Unit,
     onCambiarEstado: (BitacoraEntity, EstadoBitacora) -> Unit
 ) {
-    if (bitacoras.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No tienes bitácoras creadas. Presiona '+' para crear una.")
+    var searchQuery by remember { mutableStateOf("") }
+    var estadoFiltro by remember { mutableStateOf<EstadoBitacora?>(null) }
+
+    val bitacorasFiltradas = remember(bitacoras, searchQuery, estadoFiltro) {
+        bitacoras.filter { b ->
+            val coincideTexto = b.titulo.contains(searchQuery, ignoreCase = true) ||
+                    b.proposito.contains(searchQuery, ignoreCase = true)
+            val coincideEstado = estadoFiltro == null || b.estado == estadoFiltro
+            coincideTexto && coincideEstado
         }
-    } else {
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(bitacoras) { bitacora ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onBitacoraClick(bitacora) },
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = bitacora.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Buscar por título o propósito...") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = estadoFiltro == null,
+                onClick = { estadoFiltro = null },
+                label = { Text("Todas") }
+            )
+            FilterChip(
+                selected = estadoFiltro == EstadoBitacora.BORRADOR,
+                onClick = { estadoFiltro = EstadoBitacora.BORRADOR },
+                label = { Text("Borrador") }
+            )
+            FilterChip(
+                selected = estadoFiltro == EstadoBitacora.PUBLICADA,
+                onClick = { estadoFiltro = EstadoBitacora.PUBLICADA },
+                label = { Text("Publicada") }
+            )
+            FilterChip(
+                selected = estadoFiltro == EstadoBitacora.CERRADA,
+                onClick = { estadoFiltro = EstadoBitacora.CERRADA },
+                label = { Text("Cerrada") }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (bitacorasFiltradas.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No se encontraron bitácoras.")
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(bitacorasFiltradas) { bitacora ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onBitacoraClick(bitacora) },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = bitacora.titulo,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = bitacora.estado.name,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = when (bitacora.estado) {
+                                        EstadoBitacora.PUBLICADA -> MaterialTheme.colorScheme.primary
+                                        EstadoBitacora.CERRADA -> MaterialTheme.colorScheme.error
+                                        else -> MaterialTheme.colorScheme.secondary
+                                    }
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = bitacora.estado.name,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = when (bitacora.estado) {
-                                    EstadoBitacora.PUBLICADA -> MaterialTheme.colorScheme.primary
-                                    EstadoBitacora.CERRADA -> MaterialTheme.colorScheme.error
-                                    else -> MaterialTheme.colorScheme.secondary
-                                }
+                                text = bitacora.proposito,
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = bitacora.proposito, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            if (bitacora.estado == EstadoBitacora.BORRADOR) {
-                                TextButton(onClick = { onCambiarEstado(bitacora, EstadoBitacora.PUBLICADA) }) {
-                                    Icon(Icons.Default.Send, contentDescription = null)
-                                    Spacer(modifier = Modifier.padding(2.dp))
-                                    Text("Publicar")
-                                }
-                            } else if (bitacora.estado == EstadoBitacora.PUBLICADA) {
-                                TextButton(onClick = { onCambiarEstado(bitacora, EstadoBitacora.CERRADA) }) {
-                                    Icon(Icons.Default.CheckCircle, contentDescription = null)
-                                    Spacer(modifier = Modifier.padding(2.dp))
-                                    Text("Cerrar")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                if (bitacora.estado == EstadoBitacora.BORRADOR) {
+                                    TextButton(onClick = { onCambiarEstado(bitacora, EstadoBitacora.PUBLICADA) }) {
+                                        Icon(Icons.Default.Send, contentDescription = null)
+                                        Spacer(modifier = Modifier.padding(2.dp))
+                                        Text("Publicar")
+                                    }
+                                } else if (bitacora.estado == EstadoBitacora.PUBLICADA) {
+                                    TextButton(onClick = { onCambiarEstado(bitacora, EstadoBitacora.CERRADA) }) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null)
+                                        Spacer(modifier = Modifier.padding(2.dp))
+                                        Text("Cerrar")
+                                    }
                                 }
                             }
                         }
