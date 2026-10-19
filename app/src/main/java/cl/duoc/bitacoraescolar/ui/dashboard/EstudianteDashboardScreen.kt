@@ -1,5 +1,11 @@
 package cl.duoc.bitacoraescolar.ui.dashboard
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,13 +16,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -24,12 +32,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -47,9 +55,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cl.duoc.bitacoraescolar.data.auth.UserSession
 import cl.duoc.bitacoraescolar.data.model.BitacoraEntity
-import cl.duoc.bitacoraescolar.data.model.EstadoRegistro
+import cl.duoc.bitacoraescolar.data.model.EvidenciaEntity
 import cl.duoc.bitacoraescolar.data.model.RecordatorioEntity
 import cl.duoc.bitacoraescolar.data.model.RegistroEntity
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +76,11 @@ fun EstudianteDashboardScreen(
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedBitacoraForResponder by remember { mutableStateOf<BitacoraEntity?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredBitacoras = bitacorasPublicadas.filter {
+        it.titulo.contains(searchQuery, ignoreCase = true) || it.proposito.contains(searchQuery, ignoreCase = true)
+    }
 
     Scaffold(
         topBar = {
@@ -79,7 +93,7 @@ fun EstudianteDashboardScreen(
                 navigationIcon = {
                     if (selectedBitacoraForResponder != null) {
                         IconButton(onClick = { selectedBitacoraForResponder = null }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                         }
                     }
                 },
@@ -111,11 +125,11 @@ fun EstudianteDashboardScreen(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("Bitácoras Activas (${bitacorasPublicadas.size})") }
+                        text = { Text("Bitácoras Activas (${filteredBitacoras.size})") }
                     )
                     Tab(
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
+                        onClick = { selectedTab == 1 },
                         text = { Text("Mis Registros (${misRegistros.size})") }
                     )
                     Tab(
@@ -126,16 +140,24 @@ fun EstudianteDashboardScreen(
                 }
 
                 when (selectedTab) {
-                    0 -> EstudianteBitacorasList(
-                        bitacoras = bitacorasPublicadas,
-                        onBitacoraClick = { selectedBitacoraForResponder = it }
-                    )
-                    1 -> EstudianteRegistrosList(
-                        registros = misRegistros
-                    )
-                    2 -> EstudianteRecordatoriosList(
-                        recordatorios = recordatorios
-                    )
+                    0 -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                label = { Text("Buscar bitácoras...") },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().padding(16.dp)
+                            )
+                            EstudianteBitacorasList(
+                                bitacoras = filteredBitacoras,
+                                onBitacoraClick = { selectedBitacoraForResponder = it }
+                            )
+                        }
+                    }
+                    1 -> EstudianteRegistrosList(registros = misRegistros)
+                    2 -> EstudianteRecordatoriosList(recordatorios = recordatorios)
                 }
             }
         }
@@ -149,23 +171,28 @@ fun EstudianteBitacorasList(
 ) {
     if (bitacoras.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No hay bitácoras publicadas para tu curso actualmente.")
+            Text("No hay bitácoras publicadas que coincidan con la búsqueda.")
         }
     } else {
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(bitacoras) { bitacora ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onBitacoraClick(bitacora) },
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 })
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = bitacora.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "Propósito: ${bitacora.proposito}", style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "Mes: ${bitacora.mes}/${bitacora.anio}", style = MaterialTheme.typography.labelSmall)
-                            Text("Toca para responder →", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { onBitacoraClick(bitacora) },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = bitacora.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = "Propósito: ${bitacora.proposito}", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "Mes: ${bitacora.mes}/${bitacora.anio}", style = MaterialTheme.typography.labelSmall)
+                                Text("Toca para responder →", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+                            }
                         }
                     }
                 }
@@ -184,12 +211,37 @@ fun EstudianteResponderBitacoraView(
     var contenidoText by remember { mutableStateOf("") }
     var mensajeEstado by remember { mutableStateOf<String?>(null) }
     var existingRegistro by remember { mutableStateOf<RegistroEntity?>(null) }
+    var evidencias by remember { mutableStateOf<List<EvidenciaEntity>>(emptyList()) }
 
     LaunchedEffect(bitacora.id, estudianteId) {
         val reg = viewModel.getRegistroByBitacoraYEstudiante(bitacora.id, estudianteId)
         if (reg != null) {
             existingRegistro = reg
             contenidoText = reg.contenido
+        }
+    }
+
+    LaunchedEffect(existingRegistro?.id) {
+        existingRegistro?.id?.let { regId ->
+            viewModel.getEvidenciasByRegistro(regId).collect { evs ->
+                evidencias = evs
+            }
+        }
+    }
+
+    // Photo Picker launcher (Recurso nativo 1)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        uri?.let {
+            val regId = existingRegistro?.id
+            if (regId != null) {
+                viewModel.agregarEvidencia(regId, it.toString(), "Evidencia_Galeria_${System.currentTimeMillis()}.jpg", "FOTO") { success ->
+                    if (success) mensajeEstado = "Imagen adjuntada correctamente desde la galería."
+                }
+            } else {
+                mensajeEstado = "Primero guarda un borrador antes de adjuntar evidencias."
+            }
         }
     }
 
@@ -215,8 +267,47 @@ fun EstudianteResponderBitacoraView(
                 value = contenidoText,
                 onValueChange = { contenidoText = it },
                 label = { Text("Tu Respuesta / Registro de Aprendizaje *") },
-                modifier = Modifier.fillMaxWidth().height(180.dp)
+                modifier = Modifier.fillMaxWidth().height(160.dp)
             )
+        }
+
+        // Native resources section (Photo Picker / Evidencias)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(text = "Evidencias Adjuntas (${evidencias.size})", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (evidencias.isEmpty()) {
+                        Text("No hay evidencias adjuntas. Usa el botón inferior para agregar fotos desde tu galería.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        evidencias.forEach { ev ->
+                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.padding(4.dp))
+                                Text(text = ev.nombreArchivo, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            photoPickerLauncher.launch(
+                                androidx.activity.result.contract.ActivityResultContracts.PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.padding(4.dp))
+                        Text("Adjuntar Evidencia (Photo Picker nativo)")
+                    }
+                }
+            }
         }
 
         if (existingRegistro?.retroalimentacion != null) {
@@ -241,7 +332,11 @@ fun EstudianteResponderBitacoraView(
                 Button(
                     onClick = {
                         viewModel.guardarRegistro(bitacora.id, estudianteId, contenidoText, esEnvio = false) { success, err ->
-                            mensajeEstado = if (success) "Borrador guardado exitosamente." else err
+                            if (success) {
+                                mensajeEstado = "Borrador guardado exitosamente."
+                            } else {
+                                mensajeEstado = err
+                            }
                         }
                     },
                     modifier = Modifier.weight(1f)
@@ -279,16 +374,18 @@ fun EstudianteRegistrosList(
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(registros) { registro ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = "Bitácora ID: #${registro.bitacoraId}", style = MaterialTheme.typography.labelMedium)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = registro.contenido, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = "Estado: ${registro.estado}", style = MaterialTheme.typography.labelSmall)
-                            if (!registro.retroalimentacion.isNullOrBlank()) {
-                                Text(text = "Con Retroalimentación ✓", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                AnimatedVisibility(visible = true, enter = fadeIn()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = "Bitácora ID: #${registro.bitacoraId}", style = MaterialTheme.typography.labelMedium)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = registro.contenido, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(text = "Estado: ${registro.estado}", style = MaterialTheme.typography.labelSmall)
+                                if (!registro.retroalimentacion.isNullOrBlank()) {
+                                    Text(text = "Con Retroalimentación ✓", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
                     }
@@ -309,13 +406,15 @@ fun EstudianteRecordatoriosList(
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(recordatorios) { rec ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = rec.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = rec.mensaje, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = "Tipo: ${rec.tipo}", style = MaterialTheme.typography.labelSmall)
+                AnimatedVisibility(visible = true, enter = fadeIn()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = rec.titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = rec.mensaje, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(text = "Tipo: ${rec.tipo}", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 }
             }
