@@ -1,5 +1,9 @@
 package cl.duoc.bitacoraescolar.ui.auth
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -38,6 +42,9 @@ fun LoginScreen(
     viewModel: LoginViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val loginInteraction = remember { MutableInteractionSource() }
+    val loginPressed by loginInteraction.collectIsPressedAsState()
+    val loginScale by animateFloatAsState(if (loginPressed) 0.97f else 1f, label = "loginPress")
     var mostrarPassword by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.loggedInUser) {
         uiState.loggedInUser?.let { onLoginSuccess(it.rol) }
@@ -107,10 +114,11 @@ fun LoginScreen(
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = viewModel::login,
+                interactionSource = loginInteraction,
                 enabled = !uiState.isLoading,
                 colors = ButtonDefaults.buttonColors(containerColor = Azul),
                 shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth().height(54.dp)
+                modifier = Modifier.fillMaxWidth().height(54.dp).scale(loginScale)
             ) {
                 if (uiState.isLoading) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White)
                 else Text("Iniciar sesión", fontSize = 17.sp)
@@ -122,8 +130,14 @@ fun LoginScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     fila.forEach { (nombre, correo, color) ->
                         val elegido = uiState.emailInput == correo
+                        val cardInteraction = remember(correo) { MutableInteractionSource() }
+                        val cardPressed by cardInteraction.collectIsPressedAsState()
+                        val cardScale by animateFloatAsState(if (cardPressed) 0.96f else 1f, label = "cardPress")
                         Card(
-                            modifier = Modifier.weight(1f).clickable { viewModel.setQuickUser(correo) },
+                            modifier = Modifier.weight(1f).scale(cardScale).clickable(
+                                interactionSource = cardInteraction,
+                                indication = null
+                            ) { viewModel.setQuickUser(correo) },
                             shape = RoundedCornerShape(18.dp),
                             colors = CardDefaults.cardColors(containerColor = if (elegido) color.copy(alpha = .22f) else color.copy(alpha = .10f)),
                             border = if (elegido) androidx.compose.foundation.BorderStroke(2.dp, color) else null

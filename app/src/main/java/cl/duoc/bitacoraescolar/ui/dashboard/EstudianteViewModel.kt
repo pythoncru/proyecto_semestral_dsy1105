@@ -39,6 +39,7 @@ class EstudianteViewModel(application: Application) : AndroidViewModel(applicati
         estudianteId: Long,
         contenido: String,
         esEnvio: Boolean,
+        permitirEdicion: Boolean = false,
         onComplete: (Boolean, String?) -> Unit
     ) {
         if (contenido.isBlank()) {
@@ -49,6 +50,10 @@ class EstudianteViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             try {
                 val existente = repository.getRegistroByBitacoraYEstudiante(bitacoraId, estudianteId)
+                if (existente != null && existente.estado != EstadoRegistro.BORRADOR && (!permitirEdicion || !esEnvio)) {
+                    onComplete(false, "Registro ya enviado. Selecciona Editar bitácora.")
+                    return@launch
+                }
                 val nuevoEstado = if (esEnvio) EstadoRegistro.ENVIADO else EstadoRegistro.BORRADOR
 
                 val registro = if (existente != null) {
@@ -91,4 +96,56 @@ class EstudianteViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun getEvidenciasByRegistro(registroId: Long) = repository.getEvidenciasByRegistro(registroId)
+    suspend fun obtenerDatosBitacora(bitacoraId: Long): Pair<String, String> {
+        val bitacora = repository.getBitacoraById(bitacoraId)
+            ?: return "Bitácora #$bitacoraId" to "Desconocido"
+        val docente = repository.getUsuarioById(bitacora.docenteId)
+        return bitacora.titulo to (docente?.nombreCompleto ?: "Desconocido")
+    }
+
+    fun obtenerRegistroParaEvidencia(bitacoraId: Long, estudianteId: Long, onComplete: (RegistroEntity?) -> Unit) {
+        viewModelScope.launch { onComplete(repository.getRegistroByBitacoraYEstudiante(bitacoraId, estudianteId)) }
+    }
+
+    fun guardarImagenEvidencia(
+        bitacoraId: Long, estudianteId: Long, contenido: String, fileUri: String,
+        permitirEdicion: Boolean = false,
+        onComplete: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val actual = repository.getRegistroByBitacoraYEstudiante(bitacoraId, estudianteId)
+                if (actual != null && actual.estado != EstadoRegistro.BORRADOR && !permitirEdicion) {
+                    onComplete(false, "Selecciona Editar bitácora antes de adjuntar imágenes.")
+                    return@launch
+                }
+                val id = if (actual != null) actual.id else repository.guardarRegistro(
+                    RegistroEntity(bitacoraId = bitacoraId, estudianteId = estudianteId, contenido = contenido)
+                )
+                // Comprobar el límite en la base de datos, no solo en pantalla.
+                val cantidad = repository.contarEvidencias(id)
+                if (cantidad >= 5) {
+                    onComplete(false, "Solo se permiten 5 imágenes por bitácora.")
+                } else {
+                    repository.agregarEvidencia(EvidenciaEntity(
+                        registroId = id, fileUri = fileUri,
+                        nombreArchivo = "Foto ${cantidad + 1}", tipo = "FOTO"
+                    ))
+                    onComplete(true, null)
+                }
+            } catch (e: Exception) { onComplete(false, e.message) }
+        }
+    }
+
+    fun eliminarImagenEvidencia(evidenciaId: Long, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val eliminada = repository.eliminarEvidencia(evidenciaId)
+                onComplete(eliminada, if (eliminada) null else "No se encontró la imagen.")
+            } catch (e: Exception) {
+                onComplete(false, e.message ?: "No se pudo eliminar la imagen.")
+            }
+        }
+    }
+
 }

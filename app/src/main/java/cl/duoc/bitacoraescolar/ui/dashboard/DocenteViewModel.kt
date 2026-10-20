@@ -51,6 +51,7 @@ class DocenteViewModel(application: Application) : AndroidViewModel(application)
         cursoId: Long,
         asignaturaId: Long,
         docenteId: Long,
+        fechaBitacora: Long,
         onComplete: (Boolean, String?) -> Unit
     ) {
         if (titulo.isBlank() || proposito.isBlank() || instrucciones.isBlank()) {
@@ -70,7 +71,8 @@ class DocenteViewModel(application: Application) : AndroidViewModel(application)
                     cursoId = cursoId,
                     asignaturaId = asignaturaId,
                     docenteId = docenteId,
-                    estado = EstadoBitacora.BORRADOR
+                    estado = EstadoBitacora.BORRADOR,
+                    fechaCreacion = fechaBitacora
                 )
                 repository.crearBitacora(nuevaBitacora)
                 onComplete(true, null)

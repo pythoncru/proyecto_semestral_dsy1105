@@ -1,12 +1,23 @@
 package cl.duoc.bitacoraescolar.ui.dashboard
 
 import android.net.Uri
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import java.io.File
+import java.io.FileOutputStream
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,9 +84,17 @@ fun EstudianteDashboardScreen(
     val estudianteId = currentUser?.id ?: 3L
     val cursoId = currentUser?.cursoId ?: 1L
 
-    val bitacorasPublicadas by viewModel.getBitacorasPublicadasPorCurso(cursoId).collectAsState(initial = emptyList())
-    val misRegistros by viewModel.getRegistrosByEstudiante(estudianteId).collectAsState(initial = emptyList())
+    val bitacorasFlow = remember(viewModel, cursoId) {
+        viewModel.getBitacorasPublicadasPorCurso(cursoId)
+    }
+    val bitacorasPublicadas by bitacorasFlow.collectAsState()
+    val registrosFlow = remember(viewModel, estudianteId) {
+        viewModel.getRegistrosByEstudiante(estudianteId)
+    }
+    val misRegistros by registrosFlow.collectAsState()
     val recordatorios by viewModel.recordatorios.collectAsState()
+    val borradores = misRegistros.filter { it.estado.name == "BORRADOR" }
+    val enviados = misRegistros.filter { it.estado.name != "BORRADOR" }
 
     RecordatorioPopup(usuarioId = estudianteId, recordatorios = recordatorios)
 
@@ -97,16 +116,16 @@ fun EstudianteDashboardScreen(
                 ),
                 navigationIcon = {
                     if (selectedBitacoraForResponder != null) {
-                        IconButton(onClick = { selectedBitacoraForResponder = null }) {
+                        IconButton(modifier = Modifier.interactiveFeedback(), onClick = { selectedBitacoraForResponder = null }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                         }
                     }
                 },
                 actions = {
-                    IconButton(onClick = onToggleTheme) {
+                    IconButton(modifier = Modifier.interactiveFeedback(), onClick = onToggleTheme) {
                         Text(if (darkMode) "☀" else "☾", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
-                    IconButton(onClick = {
+                    IconButton(modifier = Modifier.interactiveFeedback(), onClick = {
                         UserSession.logout()
                         onLogout()
                     }) {
@@ -130,20 +149,25 @@ fun EstudianteDashboardScreen(
                 )
             } else {
                 ScrollableTabRow(selectedTabIndex = selectedTab) {
-                    Tab(
+                    Tab(modifier = Modifier.interactiveFeedback(), 
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
                         text = { Text("Bitácoras Activas (${filteredBitacoras.size})") }
                     )
-                    Tab(
+                    Tab(modifier = Modifier.interactiveFeedback(), 
                         selected = selectedTab == 1,
-                        onClick = { selectedTab == 1 },
-                        text = { Text("Mis Registros (${misRegistros.size})") }
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Mis Registros (${enviados.size})") }
                     )
-                    Tab(
+                    Tab(modifier = Modifier.interactiveFeedback(), 
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
                         text = { Text("Recordatorios (${recordatorios.size})") }
+                    )
+                    Tab(modifier = Modifier.interactiveFeedback(), 
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        text = { Text("Borradores (${borradores.size})") }
                     )
                 }
 
@@ -164,8 +188,14 @@ fun EstudianteDashboardScreen(
                             )
                         }
                     }
-                    1 -> EstudianteRegistrosList(registros = misRegistros)
+                    1 -> EstudianteRegistrosList(registros = enviados, viewModel = viewModel)
                     2 -> EstudianteRecordatoriosList(recordatorios = recordatorios)
+                    3 -> EstudianteBorradoresList(
+                        borradores = borradores,
+                        onEditar = { borrador ->
+                            selectedBitacoraForResponder = bitacorasPublicadas.firstOrNull { it.id == borrador.bitacoraId }
+                        }
+                    )
                 }
             }
         }
@@ -189,7 +219,7 @@ fun EstudianteBitacorasList(
                     enter = fadeIn() + slideInVertically(initialOffsetY = { it / 2 })
                 ) {
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onBitacoraClick(bitacora) },
+                        modifier = Modifier.fillMaxWidth().interactiveFeedback().clickable { onBitacoraClick(bitacora) },
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -219,6 +249,9 @@ fun EstudianteResponderBitacoraView(
     var contenidoText by remember { mutableStateOf("") }
     var mensajeEstado by remember { mutableStateOf<String?>(null) }
     var existingRegistro by remember { mutableStateOf<RegistroEntity?>(null) }
+    var modoEdicion by remember(bitacora.id, estudianteId) { mutableStateOf(false) }
+    val yaEnviado = existingRegistro?.estado?.name?.let { it != "BORRADOR" } ?: false
+    val puedeEditar = !yaEnviado || modoEdicion
     var evidencias by remember { mutableStateOf<List<EvidenciaEntity>>(emptyList()) }
 
     LaunchedEffect(bitacora.id, estudianteId) {
@@ -237,20 +270,130 @@ fun EstudianteResponderBitacoraView(
         }
     }
 
-    // Photo Picker launcher (Recurso nativo 1)
+    val context = LocalContext.current
+    var mostrarOpcionesFoto by remember { mutableStateOf(false) }
+    var adjuntando by remember { mutableStateOf(false) }
+    var eliminandoId by remember { mutableStateOf<Long?>(null) }
+    var imagenParaEliminar by remember { mutableStateOf<EvidenciaEntity?>(null) }
+
+    if (imagenParaEliminar != null) {
+        val seleccionada = imagenParaEliminar!!
+        AlertDialog(
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            onDismissRequest = { imagenParaEliminar = null },
+            title = { Text("Eliminar evidencia") },
+            text = { Text("¿Quieres eliminar esta imagen de la bitácora?") },
+            confirmButton = {
+                TextButton(modifier = Modifier.interactiveFeedback(), 
+                    enabled = eliminandoId == null,
+                    onClick = {
+                        eliminandoId = seleccionada.id
+                        viewModel.eliminarImagenEvidencia(seleccionada.id) { ok, error ->
+                            eliminandoId = null
+                            imagenParaEliminar = null
+                            if (ok) {
+                                val ruta = Uri.parse(seleccionada.fileUri).path
+                                val dir = File(context.filesDir, "evidencias")
+                                if (ruta != null) {
+                                    val archivo = File(ruta)
+                                    if (archivo.parentFile?.canonicalPath == dir.canonicalPath) {
+                                        archivo.delete()
+                                    }
+                                }
+                                mensajeEstado = "Imagen eliminada."
+                            } else {
+                                mensajeEstado = error ?: "No se pudo eliminar la imagen."
+                            }
+                        }
+                    }
+                ) { Text("Eliminar") }
+            },
+            dismissButton = {
+                TextButton(modifier = Modifier.interactiveFeedback(), onClick = { imagenParaEliminar = null }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    fun guardarImagenLocal(bitmap: Bitmap): Uri {
+        val dir = File(context.filesDir, "evidencias").apply { mkdirs() }
+        val archivo = File(dir, "foto_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}.jpg")
+        FileOutputStream(archivo).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        return Uri.fromFile(archivo)
+    }
+
+    fun adjuntarImagen(uri: Uri) {
+        if (!puedeEditar) { mensajeEstado = "Selecciona Editar bitácora para cambiar evidencias."; return }
+        if (adjuntando || evidencias.size >= 5) {
+            mensajeEstado = "Solo se permiten 5 imágenes por bitácora."
+            return
+        }
+        adjuntando = true
+        viewModel.guardarImagenEvidencia(
+            bitacora.id, estudianteId, contenidoText, uri.toString(),
+            permitirEdicion = yaEnviado && modoEdicion
+        ) { success, error ->
+            adjuntando = false
+            if (success) {
+                mensajeEstado = "Imagen adjuntada correctamente."
+                // La consulta de Room actualiza automáticamente las miniaturas.
+                viewModel.obtenerRegistroParaEvidencia(bitacora.id, estudianteId) { reg ->
+                    existingRegistro = reg
+                }
+            } else {
+                mensajeEstado = error ?: "No se pudo adjuntar la imagen."
+            }
+        }
+    }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
-        uri?.let {
-            val regId = existingRegistro?.id
-            if (regId != null) {
-                viewModel.agregarEvidencia(regId, it.toString(), "Evidencia_Galeria_${System.currentTimeMillis()}.jpg", "FOTO") { success ->
-                    if (success) mensajeEstado = "Imagen adjuntada correctamente desde la galería."
-                }
-            } else {
-                mensajeEstado = "Primero guarda un borrador antes de adjuntar evidencias."
+        if (uri != null) {
+            try {
+                // Copiar al almacenamiento interno evita perder permisos temporales del selector.
+                val dir = File(context.filesDir, "evidencias").apply { mkdirs() }
+                val archivo = File(dir, "foto_${System.currentTimeMillis()}_${java.util.UUID.randomUUID()}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    archivo.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("No se pudo leer la imagen")
+                adjuntarImagen(Uri.fromFile(archivo))
+            } catch (e: Exception) {
+                mensajeEstado = "No se pudo importar la imagen: ${e.message}"
             }
         }
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        if (bitmap != null) {
+            try { adjuntarImagen(guardarImagenLocal(bitmap)) }
+            catch (e: Exception) { mensajeEstado = "Error al guardar foto: ${e.message}" }
+        }
+    }
+
+    if (mostrarOpcionesFoto) {
+        AlertDialog(
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            onDismissRequest = { mostrarOpcionesFoto = false },
+            title = { Text("Adjuntar evidencia") },
+            text = {
+                Column {
+                    TextButton(modifier = Modifier.interactiveFeedback(), onClick = {
+                        mostrarOpcionesFoto = false
+                        photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }) { Text("Elegir desde la galería") }
+                    TextButton(modifier = Modifier.interactiveFeedback(), onClick = {
+                        mostrarOpcionesFoto = false
+                        cameraLauncher.launch(null)
+                    }) { Text("Tomar una foto") }
+                }
+            },
+            confirmButton = { TextButton(modifier = Modifier.interactiveFeedback(), onClick = { mostrarOpcionesFoto = false }) { Text("Cancelar") } }
+        )
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -274,43 +417,46 @@ fun EstudianteResponderBitacoraView(
             OutlinedTextField(
                 value = contenidoText,
                 onValueChange = { contenidoText = it },
+                readOnly = !puedeEditar,
                 label = { Text("Tu Respuesta / Registro de Aprendizaje *") },
                 modifier = Modifier.fillMaxWidth().height(160.dp)
             )
         }
 
-        // Native resources section (Photo Picker / Evidencias)
+        // Miniaturas inmediatamente debajo del campo de respuesta.
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Evidencias Adjuntas (${evidencias.size})", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (evidencias.isEmpty()) {
-                        Text("No hay evidencias adjuntas. Usa el botón inferior para agregar fotos desde tu galería.", style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        evidencias.forEach { ev ->
-                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.padding(4.dp))
-                                Text(text = ev.nombreArchivo, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            }
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Evidencias adjuntas (${evidencias.size}/5)", fontWeight = FontWeight.Bold)
+                    if (evidencias.isEmpty()) Text("Todavía no has adjuntado fotografías.")
+                    evidencias.forEach { ev ->
+                        val imagen = remember(ev.fileUri) {
+                            try {
+                                val ruta = Uri.parse(ev.fileUri).path
+                                ruta?.let { BitmapFactory.decodeFile(it)?.asImageBitmap() }
+                            } catch (_: Exception) { null }
+                        }
+                        if (imagen != null) {
+                            Image(
+                                bitmap = imagen,
+                                contentDescription = "Evidencia ${ev.nombreArchivo}",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxWidth().height(180.dp)
+                            )
+                        } else Text("No se pudo mostrar ${ev.nombreArchivo}")
+                        TextButton(
+                            onClick = { imagenParaEliminar = ev },
+                            enabled = puedeEditar && eliminandoId == null && !adjuntando,
+                            modifier = Modifier.align(Alignment.End).interactiveFeedback()) {
+                            Text("Eliminar imagen")
                         }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
-                        onClick = {
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                        onClick = { mostrarOpcionesFoto = true },
+                        enabled = puedeEditar && evidencias.size < 5 && !adjuntando,
+                        modifier = Modifier.fillMaxWidth().interactiveFeedback()) {
                         Icon(Icons.Default.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.padding(4.dp))
-                        Text("Adjuntar Evidencia (Photo Picker nativo)")
+                        Text(if (evidencias.size >= 5) "Máximo de 5 imágenes" else "Adjuntar evidencia")
                     }
                 }
             }
@@ -334,35 +480,39 @@ fun EstudianteResponderBitacoraView(
         }
 
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = {
-                        viewModel.guardarRegistro(bitacora.id, estudianteId, contenidoText, esEnvio = false) { success, err ->
-                            if (success) {
-                                mensajeEstado = "Borrador guardado exitosamente."
-                            } else {
-                                mensajeEstado = err
-                            }
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Guardar Borrador")
+            if (yaEnviado && !modoEdicion) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Este registro ya fue enviado. Solo puedes modificarlo mediante Editar bitácora.")
+                    OutlinedButton(onClick = { modoEdicion = true }, modifier = Modifier.fillMaxWidth().interactiveFeedback()) {
+                        Text("Editar bitácora")
+                    }
                 }
-
-                Button(
-                    onClick = {
-                        viewModel.guardarRegistro(bitacora.id, estudianteId, contenidoText, esEnvio = true) { success, err ->
-                            if (success) {
-                                mensajeEstado = "¡Registro enviado correctamente al docente!"
-                            } else {
-                                mensajeEstado = err
+            } else {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (!yaEnviado) {
+                        Button(onClick = {
+                            viewModel.guardarRegistro(bitacora.id, estudianteId, contenidoText, esEnvio = false) { ok, err ->
+                                mensajeEstado = if (ok) "Borrador guardado." else err
+                                if (ok) viewModel.obtenerRegistroParaEvidencia(bitacora.id, estudianteId) { existingRegistro = it }
+                            }
+                        }, modifier = Modifier.weight(1f).interactiveFeedback()) { Text("Guardar borrador") }
+                    } else {
+                        OutlinedButton(onClick = { modoEdicion = false }, modifier = Modifier.weight(1f).interactiveFeedback()) {
+                            Text("Cancelar edición")
+                        }
+                    }
+                    Button(onClick = {
+                        viewModel.guardarRegistro(bitacora.id, estudianteId, contenidoText,
+                            esEnvio = true, permitirEdicion = yaEnviado && modoEdicion) { ok, err ->
+                            mensajeEstado = if (ok) "Registro guardado correctamente." else err
+                            if (ok) {
+                                modoEdicion = false
+                                viewModel.obtenerRegistroParaEvidencia(bitacora.id, estudianteId) { existingRegistro = it }
                             }
                         }
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Enviar al Docente")
+                    }, modifier = Modifier.weight(1f).interactiveFeedback()) {
+                        Text(if (yaEnviado) "Guardar cambios" else "Enviar al docente")
+                    }
                 }
             }
         }
@@ -371,29 +521,66 @@ fun EstudianteResponderBitacoraView(
 
 @Composable
 fun EstudianteRegistrosList(
-    registros: List<RegistroEntity>
+    registros: List<RegistroEntity>,
+    viewModel: EstudianteViewModel
 ) {
     if (registros.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Aún no tienes registros guardados o enviados.")
+            Text("Aún no tienes registros enviados. Revisa Borradores para ver los pendientes.")
         }
     } else {
         LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(registros) { registro ->
-                AnimatedVisibility(visible = true, enter = fadeIn()) {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(text = "Bitácora ID: #${registro.bitacoraId}", style = MaterialTheme.typography.labelMedium)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(text = registro.contenido, style = MaterialTheme.typography.bodyMedium)
+            items(registros, key = { it.id }) { registro ->
+                var titulo by remember(registro.bitacoraId) { mutableStateOf("Bitácora #${registro.bitacoraId}") }
+                var docente by remember(registro.bitacoraId) { mutableStateOf("Cargando docente...") }
+                var expandido by remember(registro.id) { mutableStateOf(false) }
+                LaunchedEffect(registro.bitacoraId) {
+                    val datos = viewModel.obtenerDatosBitacora(registro.bitacoraId)
+                    titulo = datos.first
+                    docente = datos.second
+                }
+                Card(modifier = Modifier.fillMaxWidth().interactiveFeedback().clickable { expandido = !expandido }) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(titulo, style = MaterialTheme.typography.titleMedium)
+                        Text("Docente: $docente", style = MaterialTheme.typography.bodySmall)
+                        Text("Fecha: " + java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale("es", "CL")).format(java.util.Date(registro.fechaCreacion)), style = MaterialTheme.typography.labelSmall)
+                        Text("Estado: ${registro.estado}", style = MaterialTheme.typography.labelSmall)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(if (expandido) "Ocultar registro ▲" else "Ver registro ▼", color = MaterialTheme.colorScheme.primary)
+                        if (expandido) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(text = "Estado: ${registro.estado}", style = MaterialTheme.typography.labelSmall)
-                                if (!registro.retroalimentacion.isNullOrBlank()) {
-                                    Text(text = "Con Retroalimentación ✓", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
-                                }
+                            Text(registro.contenido)
+                            if (!registro.retroalimentacion.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Retroalimentación del docente: ${registro.retroalimentacion}")
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EstudianteBorradoresList(
+    borradores: List<RegistroEntity>,
+    onEditar: (RegistroEntity) -> Unit
+) {
+    if (borradores.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No tienes borradores guardados.")
+        }
+    } else {
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(borradores, key = { it.id }) { borrador ->
+                Card(modifier = Modifier.fillMaxWidth().interactiveFeedback().clickable { onEditar(borrador) }) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Borrador de bitácora #${borrador.bitacoraId}", style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(borrador.contenido, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Toca para continuar editando →", color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }

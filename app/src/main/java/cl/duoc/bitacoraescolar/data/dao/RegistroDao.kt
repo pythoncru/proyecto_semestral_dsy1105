@@ -29,8 +29,14 @@ interface RegistroDao {
     @Query("SELECT * FROM registros WHERE bitacoraId = :bitacoraId AND estudianteId = :estudianteId LIMIT 1")
     suspend fun getRegistroByBitacoraYEstudiante(bitacoraId: Long, estudianteId: Long): RegistroEntity?
 
+    @Query("SELECT COUNT(*) FROM evidencias WHERE registroId = :registroId")
+    suspend fun contarEvidencias(registroId: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEvidencia(evidencia: EvidenciaEntity): Long
+
+    @Query("DELETE FROM evidencias WHERE id = :evidenciaId")
+    suspend fun eliminarEvidencia(evidenciaId: Long): Int
 
     @Query("SELECT * FROM evidencias WHERE registroId = :registroId")
     fun getEvidenciasByRegistro(registroId: Long): Flow<List<EvidenciaEntity>>

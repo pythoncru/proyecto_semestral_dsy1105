@@ -1,6 +1,7 @@
 package cl.duoc.bitacoraescolar.ui.dashboard
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.platform.LocalContext
+import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import android.app.DatePickerDialog
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -89,16 +97,16 @@ fun DocenteDashboardScreen(
                 ),
                 navigationIcon = {
                     if (selectedBitacoraForDetail != null) {
-                        IconButton(onClick = { selectedBitacoraForDetail = null }) {
+                        IconButton(modifier = Modifier.interactiveFeedback(), onClick = { selectedBitacoraForDetail = null }) {
                             Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
                         }
                     }
                 },
                 actions = {
-                    IconButton(onClick = onToggleTheme) {
+                    IconButton(modifier = Modifier.interactiveFeedback(), onClick = onToggleTheme) {
                         Text(if (darkMode) "☀" else "☾", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
                     }
-                    IconButton(onClick = {
+                    IconButton(modifier = Modifier.interactiveFeedback(), onClick = {
                         UserSession.logout()
                         onLogout()
                     }) {
@@ -109,7 +117,7 @@ fun DocenteDashboardScreen(
         },
         floatingActionButton = {
             if (selectedBitacoraForDetail == null && selectedTab == 0) {
-                FloatingActionButton(onClick = { showCreateDialog = true }) {
+                FloatingActionButton(modifier = Modifier.interactiveFeedback(), onClick = { showCreateDialog = true }) {
                     Icon(Icons.Default.Add, contentDescription = "Crear Bitácora")
                 }
             }
@@ -128,12 +136,12 @@ fun DocenteDashboardScreen(
                 )
             } else {
                 ScrollableTabRow(selectedTabIndex = selectedTab) {
-                    Tab(
+                    Tab(modifier = Modifier.interactiveFeedback(), 
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
                         text = { Text("Mis Bitácoras (${bitacoras.size})") }
                     )
-                    Tab(
+                    Tab(modifier = Modifier.interactiveFeedback(), 
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
                         text = { Text("Recordatorios (${recordatorios.size})") }
@@ -204,22 +212,22 @@ fun DocenteBitacorasList(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            FilterChip(
+            FilterChip(modifier = Modifier.interactiveFeedback(), 
                 selected = estadoFiltro == null,
                 onClick = { estadoFiltro = null },
                 label = { Text("Todas") }
             )
-            FilterChip(
+            FilterChip(modifier = Modifier.interactiveFeedback(), 
                 selected = estadoFiltro == EstadoBitacora.BORRADOR,
                 onClick = { estadoFiltro = EstadoBitacora.BORRADOR },
                 label = { Text("Borrador") }
             )
-            FilterChip(
+            FilterChip(modifier = Modifier.interactiveFeedback(), 
                 selected = estadoFiltro == EstadoBitacora.PUBLICADA,
                 onClick = { estadoFiltro = EstadoBitacora.PUBLICADA },
                 label = { Text("Publicada") }
             )
-            FilterChip(
+            FilterChip(modifier = Modifier.interactiveFeedback(), 
                 selected = estadoFiltro == EstadoBitacora.CERRADA,
                 onClick = { estadoFiltro = EstadoBitacora.CERRADA },
                 label = { Text("Cerrada") }
@@ -241,7 +249,7 @@ fun DocenteBitacorasList(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onBitacoraClick(bitacora) },
+                            .interactiveFeedback().clickable { onBitacoraClick(bitacora) },
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -275,13 +283,13 @@ fun DocenteBitacorasList(
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 if (bitacora.estado == EstadoBitacora.BORRADOR) {
-                                    TextButton(onClick = { onCambiarEstado(bitacora, EstadoBitacora.PUBLICADA) }) {
+                                    TextButton(modifier = Modifier.interactiveFeedback(), onClick = { onCambiarEstado(bitacora, EstadoBitacora.PUBLICADA) }) {
                                         Icon(Icons.Default.Send, contentDescription = null)
                                         Spacer(modifier = Modifier.padding(2.dp))
                                         Text("Publicar")
                                     }
                                 } else if (bitacora.estado == EstadoBitacora.PUBLICADA) {
-                                    TextButton(onClick = { onCambiarEstado(bitacora, EstadoBitacora.CERRADA) }) {
+                                    TextButton(modifier = Modifier.interactiveFeedback(), onClick = { onCambiarEstado(bitacora, EstadoBitacora.CERRADA) }) {
                                         Icon(Icons.Default.CheckCircle, contentDescription = null)
                                         Spacer(modifier = Modifier.padding(2.dp))
                                         Text("Cerrar")
@@ -328,7 +336,7 @@ fun DocenteBitacoraDetailView(
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(registros) { registro ->
                     Card(
-                        modifier = Modifier.fillMaxWidth().clickable {
+                        modifier = Modifier.fillMaxWidth().interactiveFeedback().clickable {
                             selectedRegistroForReview = registro
                             retroText = registro.retroalimentacion ?: ""
                         }
@@ -349,6 +357,9 @@ fun DocenteBitacoraDetailView(
 
     if (selectedRegistroForReview != null) {
         AlertDialog(
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
             onDismissRequest = { selectedRegistroForReview = null },
             title = { Text("Revisar y Retroalimentar") },
             text = {
@@ -365,7 +376,7 @@ fun DocenteBitacoraDetailView(
                 }
             },
             confirmButton = {
-                Button(onClick = {
+                Button(modifier = Modifier.interactiveFeedback(), onClick = {
                     viewModel.retroalimentarRegistro(selectedRegistroForReview!!.id, retroText)
                     selectedRegistroForReview = null
                 }) {
@@ -373,7 +384,7 @@ fun DocenteBitacoraDetailView(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { selectedRegistroForReview = null }) {
+                TextButton(modifier = Modifier.interactiveFeedback(), onClick = { selectedRegistroForReview = null }) {
                     Text("Cancelar")
                 }
             }
@@ -397,8 +408,14 @@ fun CrearBitacoraDialog(
     var cursoSelectedId by remember { mutableLongStateOf(cursos.firstOrNull()?.id ?: 1L) }
     var asignaturaSelectedId by remember { mutableLongStateOf(asignaturas.firstOrNull()?.id ?: 1L) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    var fechaSeleccionada by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val formatoFecha = remember { SimpleDateFormat("dd/MM/yyyy", Locale("es", "CL")) }
 
     AlertDialog(
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
         onDismissRequest = onDismiss,
         title = { Text("Crear Nueva Bitácora") },
         text = {
@@ -407,6 +424,32 @@ fun CrearBitacoraDialog(
                 OutlinedTextField(value = proposito, onValueChange = { proposito = it }, label = { Text("Propósito *") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = instrucciones, onValueChange = { instrucciones = it }, label = { Text("Instrucciones *") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = preguntas, onValueChange = { preguntas = it }, label = { Text("Preguntas Orientadoras") }, modifier = Modifier.fillMaxWidth())
+
+                OutlinedButton(
+                    onClick = {
+                        val calendar = Calendar.getInstance().apply { timeInMillis = fechaSeleccionada }
+                        DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                val selected = Calendar.getInstance().apply {
+                                    set(Calendar.YEAR, year)
+                                    set(Calendar.MONTH, month)
+                                    set(Calendar.DAY_OF_MONTH, day)
+                                    set(Calendar.HOUR_OF_DAY, 12)
+                                    set(Calendar.MINUTE, 0)
+                                    set(Calendar.SECOND, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+                                fechaSeleccionada = selected.timeInMillis
+                            },
+                            calendar.get(Calendar.YEAR),
+                            calendar.get(Calendar.MONTH),
+                            calendar.get(Calendar.DAY_OF_MONTH)
+                        ).show()
+                    },
+                    modifier = Modifier.fillMaxWidth().interactiveFeedback()) {
+                    Text("Fecha de la bitácora: ${formatoFecha.format(Date(fechaSeleccionada))}")
+                }
 
                 Text("Curso: ${cursos.find { it.id == cursoSelectedId }?.nombre ?: ""}", style = MaterialTheme.typography.bodySmall)
                 Text("Asignatura: ${asignaturas.find { it.id == asignaturaSelectedId }?.nombre ?: ""}", style = MaterialTheme.typography.bodySmall)
@@ -417,14 +460,15 @@ fun CrearBitacoraDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
+            Button(modifier = Modifier.interactiveFeedback(), onClick = {
                 viewModel.crearBitacora(
                     titulo = titulo,
                     proposito = proposito,
                     instrucciones = instrucciones,
                     preguntasOrientadoras = preguntas,
-                    mes = 10,
-                    anio = 2026,
+                    mes = Calendar.getInstance().apply { timeInMillis = fechaSeleccionada }.get(Calendar.MONTH) + 1,
+                    anio = Calendar.getInstance().apply { timeInMillis = fechaSeleccionada }.get(Calendar.YEAR),
+                    fechaBitacora = fechaSeleccionada,
                     cursoId = cursoSelectedId,
                     asignaturaId = asignaturaSelectedId,
                     docenteId = docenteId,
@@ -441,7 +485,7 @@ fun CrearBitacoraDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(modifier = Modifier.interactiveFeedback(), onClick = onDismiss) {
                 Text("Cancelar")
             }
         }
@@ -468,7 +512,7 @@ fun DocenteRecordatoriosList(
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(text = "Tipo: ${rec.tipo}", style = MaterialTheme.typography.labelSmall)
-                            TextButton(onClick = { onToggleCompletado(rec.id, !rec.completado) }) {
+                            TextButton(modifier = Modifier.interactiveFeedback(), onClick = { onToggleCompletado(rec.id, !rec.completado) }) {
                                 Text(if (rec.completado) "Marcar pendiente" else "Marcar completado")
                             }
                         }

@@ -70,9 +70,14 @@ class BitacoraRepository(context: Context) {
         }
     }
 
+    suspend fun contarEvidencias(registroId: Long) = registroDao.contarEvidencias(registroId)
+
     suspend fun agregarEvidencia(evidencia: EvidenciaEntity): Long {
         return registroDao.insertEvidencia(evidencia)
     }
+
+    suspend fun eliminarEvidencia(evidenciaId: Long): Boolean =
+        registroDao.eliminarEvidencia(evidenciaId) > 0
 
     fun getEvidenciasByRegistro(registroId: Long) = registroDao.getEvidenciasByRegistro(registroId)
 
